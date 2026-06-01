@@ -21,54 +21,76 @@
         }
     </script>
     <script>
-        // ===== 异步加载 MediaPipe (避免阻塞页面渲染) =====
+        // ===== 异步加载 MediaPipe (多CDN加速，国内友好) =====
         (function loadMediaPipe(cb) {
             var scripts = [
-                'camera_utils.js',
-                'control_utils.js',
-                'drawing_utils.js',
-                'hands.js'
+                'camera_utils/camera_utils.js',
+                'control_utils/control_utils.js',
+                'drawing_utils/drawing_utils.js',
+                'hands/hands.js'
             ];
-            var CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/';
+            var CDN_LIST = [
+                'https://cdn.jsdelivr.net/npm/@mediapipe/',     // 主CDN (全球)
+                'https://unpkg.com/@mediapipe/'                  // 备用CDN
+            ];
+            var currentCDN = 0;
             var loaded = 0;
             var failed = 0;
             var total = scripts.length;
             var loadStart = Date.now();
-            var timeout = 30000;
+            var timeout = 40000;
 
             function updateProgress() {
                 var el = document.getElementById('loadingTextEl');
                 var elapsed = Math.floor((Date.now() - loadStart) / 1000);
-                if (el) el.textContent = '加载模型: ' + (loaded + failed) + '/' + total + ' (' + elapsed + 's)';
+                if (el) el.textContent = '加载手势模型: ' + (loaded + failed) + '/' + total + ' (' + elapsed + 's)';
             }
 
             function checkDone() {
                 updateProgress();
                 if (loaded + failed >= total) {
-                    if (failed === 0) {
-                        window._mediaPipeReady = true;
-                    } else {
-                        console.warn('MediaPipe: ' + failed + ' scripts failed to load');
-                        window._mediaPipeReady = true; // 仍然继续，让 init 报具体错误
+                    if (failed > 0 && currentCDN < CDN_LIST.length - 1) {
+                        // 切换到备用CDN重试
+                        currentCDN++;
+                        loaded = 0;
+                        failed = 0;
+                        loadStart = Date.now();
+                        loadAllScripts();
+                        return;
                     }
+                    window._mediaPipeCDN = CDN_LIST[currentCDN]; // 记录可用的CDN
                     cb();
                 }
             }
 
-            scripts.forEach(function(file) {
-                var s = document.createElement('script');
-                s.src = CDN_BASE + file;
-                s.crossOrigin = 'anonymous';
-                s.onload = function() { loaded++; checkDone(); };
-                s.onerror = function() { failed++; checkDone(); };
-                document.head.appendChild(s);
-            });
+            function loadAllScripts() {
+                scripts.forEach(function(file) {
+                    var s = document.createElement('script');
+                    s.src = CDN_LIST[currentCDN] + file;
+                    s.crossOrigin = 'anonymous';
+                    s.onload = function() { loaded++; checkDone(); };
+                    s.onerror = function() { failed++; checkDone(); };
+                    document.head.appendChild(s);
+                });
+            }
+
+            loadAllScripts();
 
             setTimeout(function() {
                 if (loaded + failed < total) {
-                    console.warn('CDN加载超时');
-                    failed = total - loaded;
-                    checkDone();
+                    console.warn('CDN加载超时, 切换备用源');
+                    // 移除未加载的script标签
+                    var allScripts = document.head.querySelectorAll('script[src*="mediapipe"]');
+                    allScripts.forEach(function(s) { s.remove(); });
+                    if (currentCDN < CDN_LIST.length - 1) {
+                        currentCDN++;
+                        loaded = 0;
+                        failed = 0;
+                        loadAllScripts();
+                    } else {
+                        failed = total - loaded;
+                        checkDone();
+                    }
                 }
             }, timeout);
         })(function() {
@@ -1489,7 +1511,8 @@
             return new Promise((resolve, reject) => {
                 try {
                     const handsInstance = new Hands({locateFile: (file) => {
-                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                        var cdn = window._mediaPipeCDN || 'https://cdn.jsdelivr.net/npm/@mediapipe/';
+                        return cdn + 'hands/' + file;
                     }});
                     // === 修复 4: 大幅降低置信度阈值 ===
                     handsInstance.setOptions({
