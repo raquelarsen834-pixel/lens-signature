@@ -1,0 +1,2011 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>镜头签 - Lens Signature</title>
+
+    <!-- ===== PWA / 手机 APP 模式 ===== -->
+    <meta name="theme-color" content="#e8780a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="镜头签">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
+    <link rel="manifest" href="manifest.json">
+
+    <script>
+        // 注册 Service Worker (离线缓存 + 可安装)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(function() {});
+        }
+    </script>
+    <script>
+        // ===== 异步加载 MediaPipe (避免阻塞页面渲染) =====
+        (function loadMediaPipe(cb) {
+            var scripts = [
+                'camera_utils.js',
+                'control_utils.js',
+                'drawing_utils.js',
+                'hands.js'
+            ];
+            var CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/';
+            var loaded = 0;
+            var failed = 0;
+            var total = scripts.length;
+            var loadStart = Date.now();
+            var timeout = 30000;
+
+            function updateProgress() {
+                var el = document.getElementById('loadingTextEl');
+                var elapsed = Math.floor((Date.now() - loadStart) / 1000);
+                if (el) el.textContent = '加载模型: ' + (loaded + failed) + '/' + total + ' (' + elapsed + 's)';
+            }
+
+            function checkDone() {
+                updateProgress();
+                if (loaded + failed >= total) {
+                    if (failed === 0) {
+                        window._mediaPipeReady = true;
+                    } else {
+                        console.warn('MediaPipe: ' + failed + ' scripts failed to load');
+                        window._mediaPipeReady = true; // 仍然继续，让 init 报具体错误
+                    }
+                    cb();
+                }
+            }
+
+            scripts.forEach(function(file) {
+                var s = document.createElement('script');
+                s.src = CDN_BASE + file;
+                s.crossOrigin = 'anonymous';
+                s.onload = function() { loaded++; checkDone(); };
+                s.onerror = function() { failed++; checkDone(); };
+                document.head.appendChild(s);
+            });
+
+            setTimeout(function() {
+                if (loaded + failed < total) {
+                    console.warn('CDN加载超时');
+                    failed = total - loaded;
+                    checkDone();
+                }
+            }, timeout);
+        })(function() {
+            window._mediaPipeReady = true;
+        });
+    </script>
+    <style>
+        /* 国内用系统字体，不依赖 Google Fonts (被墙) */
+        /* 原 Google Fonts: Noto Serif SC, Playfair Display, ZCOOL XiaoWei */
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* ==================== 主题：黄白渐变 (warm) ==================== */
+        body[data-theme="warm"] {
+            --bg-1: #fff9f0;
+            --bg-2: #fff0d5;
+            --bg-3: #ffe4b5;
+            --text: #3d2a00;
+            --text-dim: #8b6914;
+            --text-accent: #d4680b;
+            --surface: rgba(255,255,255,0.6);
+            --surface-border: rgba(180, 130, 60, 0.2);
+            --accent: #e8780a;
+            --accent2: #f5a623;
+            --accent-light: #fff4e0;
+            --btn-primary-bg: linear-gradient(135deg, #f0881a, #d4680b);
+            --btn-primary-text: #fff;
+            --btn-secondary-bg: rgba(160, 120, 60, 0.1);
+            --btn-secondary-text: #6b4c00;
+            --btn-secondary-border: rgba(160, 120, 60, 0.25);
+            --btn-gold-bg: linear-gradient(135deg, #ffd700, #ffaa00);
+            --btn-gold-text: #3d2a00;
+            --status-waiting-bg: rgba(245,166,35,0.12);
+            --status-waiting-text: #b86e00;
+            --status-waiting-border: rgba(245,166,35,0.3);
+            --status-ready-bg: rgba(34,139,34,0.1);
+            --status-ready-text: #2d7a2d;
+            --status-ready-border: rgba(34,139,34,0.25);
+            --status-drawing-bg: rgba(220,70,20,0.1);
+            --status-drawing-text: #c0392b;
+            --status-drawing-border: rgba(220,70,20,0.25);
+            --input-bg: rgba(255,255,255,0.75);
+            --input-border: rgba(180,130,60,0.2);
+            --input-text: #3d2a00;
+            --modal-bg: linear-gradient(135deg, #fff9f0, #fff0d5);
+            --modal-border: rgba(180,130,60,0.15);
+            --memorial-bg: linear-gradient(180deg, rgba(255,245,230,0.98) 0%, rgba(255,235,210,0.98) 100%);
+            --memorial-accent1: rgba(232,120,10,0.06);
+            --memorial-accent2: rgba(245,166,35,0.06);
+            --cloud-shape-bg: rgba(180,130,60,0.08);
+            --cloud-shape-before-bg: rgba(180,130,60,0.06);
+            --header-gradient: linear-gradient(90deg, #e8780a, #f5a623, #ffd700);
+            --loading-bg: rgba(255,245,230,0.92);
+            --loading-text: #8b6914;
+            --main-container-bg: #1a1200;
+            --tracking-indicator-bg: rgba(60,40,0,0.5);
+            --multiplayer-bg: rgba(232,120,10,0.85);
+            --sig-count-bg: rgba(60,40,0,0.55);
+            --grid-line: rgba(60,40,0,0.05);
+            --diag-border: rgba(232,120,10,0.1);
+            --diag-before: rgba(245,166,35,0.08);
+        }
+
+        /* ==================== 主题：粉白渐变 (rose) ==================== */
+        body[data-theme="rose"] {
+            --bg-1: #fff5f7;
+            --bg-2: #ffe8ed;
+            --bg-3: #ffd6de;
+            --text: #3d0015;
+            --text-dim: #9b4a62;
+            --text-accent: #d4416a;
+            --surface: rgba(255,255,255,0.6);
+            --surface-border: rgba(200, 70, 100, 0.2);
+            --accent: #e8456a;
+            --accent2: #ff7597;
+            --accent-light: #fff0f3;
+            --btn-primary-bg: linear-gradient(135deg, #e8456a, #c73e54);
+            --btn-primary-text: #fff;
+            --btn-secondary-bg: rgba(180, 60, 90, 0.1);
+            --btn-secondary-text: #6b1a35;
+            --btn-secondary-border: rgba(180, 60, 90, 0.25);
+            --btn-gold-bg: linear-gradient(135deg, #ffb3c6, #ff8fa3);
+            --btn-gold-text: #3d0015;
+            --status-waiting-bg: rgba(232,69,106,0.1);
+            --status-waiting-text: #c0395a;
+            --status-waiting-border: rgba(232,69,106,0.25);
+            --status-ready-bg: rgba(34,139,34,0.08);
+            --status-ready-text: #2d7a2d;
+            --status-ready-border: rgba(34,139,34,0.2);
+            --status-drawing-bg: rgba(200,30,60,0.1);
+            --status-drawing-text: #a02040;
+            --status-drawing-border: rgba(200,30,60,0.25);
+            --input-bg: rgba(255,255,255,0.75);
+            --input-border: rgba(200,70,100,0.2);
+            --input-text: #3d0015;
+            --modal-bg: linear-gradient(135deg, #fff5f7, #ffe8ed);
+            --modal-border: rgba(200,70,100,0.15);
+            --memorial-bg: linear-gradient(180deg, rgba(255,242,247,0.98) 0%, rgba(255,228,237,0.98) 100%);
+            --memorial-accent1: rgba(232,69,106,0.05);
+            --memorial-accent2: rgba(255,117,151,0.05);
+            --cloud-shape-bg: rgba(200,70,100,0.07);
+            --cloud-shape-before-bg: rgba(200,70,100,0.05);
+            --header-gradient: linear-gradient(90deg, #e8456a, #ff7597, #ffb3c6);
+            --loading-bg: rgba(255,242,247,0.92);
+            --loading-text: #9b4a62;
+            --main-container-bg: #1a0008;
+            --tracking-indicator-bg: rgba(60,0,20,0.5);
+            --multiplayer-bg: rgba(232,69,106,0.85);
+            --sig-count-bg: rgba(60,0,20,0.55);
+            --grid-line: rgba(60,0,20,0.05);
+            --diag-border: rgba(232,69,106,0.1);
+            --diag-before: rgba(255,117,151,0.08);
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', serif;
+            background: linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 50%, var(--bg-3) 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: var(--text);
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image:
+                linear-gradient(var(--grid-line) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .diag-lines {
+            position: fixed;
+            top: -10%; right: -5%;
+            width: 400px; height: 400px;
+            border: 1px solid var(--diag-border);
+            transform: rotate(45deg);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .diag-lines::before {
+            content: '';
+            position: absolute;
+            top: 30px; left: 30px;
+            width: 100%; height: 100%;
+            border: 1px solid var(--diag-before);
+        }
+
+        /* ==================== 主题切换按钮 ==================== */
+        .theme-switcher {
+            position: fixed; top: 20px; right: 20px;
+            z-index: 500; display: flex; gap: 6px;
+            background: var(--surface);
+            padding: 4px; border-radius: 30px;
+            border: 1px solid var(--surface-border);
+            backdrop-filter: blur(10px);
+        }
+        .theme-btn {
+            width: 36px; height: 36px; border-radius: 50%;
+            border: none; cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .theme-btn.warm {
+            background: linear-gradient(135deg, #fff9f0, #f5a623);
+            border: 2px solid transparent;
+        }
+        .theme-btn.rose {
+            background: linear-gradient(135deg, #fff5f7, #e8456a);
+            border: 2px solid transparent;
+        }
+        body[data-theme="warm"] .theme-btn.warm,
+        body[data-theme="rose"] .theme-btn.rose {
+            border-color: var(--text);
+            transform: scale(1.1);
+            box-shadow: 0 0 12px var(--accent);
+        }
+
+        /* ==================== 颜文字 ==================== */
+        .kaomoji {
+            position: fixed;
+            font-size: 1.4rem;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0.35;
+            animation: kaomojiFloat 8s ease-in-out infinite;
+            text-shadow: 0 0 8px var(--accent-light);
+            user-select: none;
+            color: var(--text-dim);
+        }
+        .kaomoji-1 { top: 12%; left: 6%; animation-delay: 0s; }
+        .kaomoji-2 { top: 25%; right: 8%; animation-delay: 2s; font-size: 1.1rem; }
+        .kaomoji-3 { bottom: 20%; left: 10%; animation-delay: 4s; font-size: 1.2rem; }
+        .kaomoji-4 { bottom: 35%; right: 6%; animation-delay: 1.5s; }
+        .kaomoji-5 { top: 45%; left: 4%; animation-delay: 3s; font-size: 1rem; }
+        .kaomoji-6 { top: 8%; right: 25%; animation-delay: 5s; font-size: 1.1rem; }
+
+        @keyframes kaomojiFloat {
+            0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.3; }
+            33% { transform: translateY(-12px) rotate(3deg); opacity: 0.5; }
+            66% { transform: translateY(8px) rotate(-2deg); opacity: 0.28; }
+        }
+
+        /* ==================== 头部 ==================== */
+        .header {
+            text-align: center; margin-bottom: 20px;
+            position: relative; z-index: 10; transition: opacity 0.6s ease;
+        }
+        .header h1 {
+            font-size: 2.5rem; font-weight: 700;
+            background: var(--header-gradient);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+            margin-bottom: 8px; letter-spacing: 4px;
+            position: relative; display: inline-block;
+        }
+        .header h1::after {
+            content: '';
+            display: block;
+            width: 60px; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            margin: 10px auto 0;
+            border-radius: 2px;
+            opacity: 0.6;
+        }
+        .header p { color: var(--text-dim); font-size: 0.95rem; letter-spacing: 2px; margin-top: 5px; }
+
+        /* ==================== 主容器 ==================== */
+        .main-container {
+            position: relative; border-radius: 20px; overflow: hidden;
+            box-shadow:
+                0 20px 40px -10px rgba(0,0,0,0.2),
+                0 0 0 1px var(--surface-border),
+                0 0 60px rgba(0,0,0,0.06);
+            background: var(--main-container-bg);
+            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 10;
+        }
+        .main-container::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            border-radius: 20px;
+            padding: 1.5px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2), transparent);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0.5;
+        }
+
+        .video-container { position: relative; width: min(90vw, 640px); height: min(67.5vw, 480px); }
+        #input_video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        #output_canvas { position: absolute; width: 100%; height: 100%; transform: scaleX(-1); cursor: crosshair; }
+        #drawing_canvas { position: absolute; width: 100%; height: 100%; transform: scaleX(-1); pointer-events: none; }
+
+        /* ============ 追踪质量指示器 ============ */
+        .tracking-indicator {
+            position: absolute; top: 10px; left: 10px;
+            z-index: 55; display: flex; align-items: center; gap: 6px;
+            background: var(--tracking-indicator-bg); padding: 4px 10px;
+            border-radius: 12px; font-size: 0.7rem; color: rgba(255,255,255,0.8);
+            backdrop-filter: blur(6px);
+        }
+        .tracking-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #ff4444; transition: background 0.3s;
+        }
+        .tracking-dot.good { background: #69f0ae; }
+        .tracking-dot.ok { background: #ffd54f; }
+        .tracking-dot.poor { background: #ff5252; }
+
+        .multiplayer-indicator {
+            position: absolute; top: 15px; right: 15px;
+            background: var(--multiplayer-bg); color: white;
+            padding: 6px 14px; border-radius: 20px; font-size: 0.8rem;
+            z-index: 50; display: none; backdrop-filter: blur(10px);
+        }
+        .multiplayer-indicator.active { display: block; animation: pulse 2s infinite; }
+        .signature-count {
+            position: absolute; bottom: 15px; left: 15px;
+            background: var(--sig-count-bg); color: white;
+            padding: 8px 16px; border-radius: 20px; font-size: 0.85rem;
+            z-index: 50; display: none; backdrop-filter: blur(10px);
+        }
+        .signature-count.active { display: block; }
+
+        /* ==================== 控制栏 ==================== */
+        .controls {
+            display: flex; gap: 12px; margin-top: 25px;
+            flex-wrap: wrap; justify-content: center;
+            position: relative; z-index: 10;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+        .controls.hidden { opacity: 0; transform: translateY(20px); pointer-events: none; }
+
+        .btn {
+            padding: 14px 32px; border: none; border-radius: 50px;
+            font-family: 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', serif; font-size: 1rem; font-weight: 600;
+            cursor: pointer; transition: all 0.3s ease;
+            letter-spacing: 2px; position: relative; overflow: hidden;
+        }
+        .btn::before {
+            content: ''; position: absolute; top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s ease;
+        }
+        .btn:hover::before { left: 100%; }
+        .btn-primary {
+            background: var(--btn-primary-bg);
+            color: var(--btn-primary-text);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }
+        .btn-primary:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .btn-secondary {
+            background: var(--btn-secondary-bg);
+            color: var(--btn-secondary-text);
+            border: 1px solid var(--btn-secondary-border);
+            backdrop-filter: blur(8px);
+        }
+        .btn-secondary:hover { background: rgba(0,0,0,0.06); transform: translateY(-3px); }
+        .btn-gold {
+            background: var(--btn-gold-bg);
+            color: var(--btn-gold-text);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+        }
+        .btn-gold:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(0,0,0,0.18); }
+
+        .color-picker {
+            display: flex; gap: 10px; align-items: center;
+            background: var(--btn-secondary-bg); padding: 10px 20px;
+            border-radius: 50px; border: 1px solid var(--btn-secondary-border);
+            backdrop-filter: blur(8px);
+        }
+        .color-picker label { font-size: 0.9rem; color: var(--text-dim); }
+        .color-option { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 3px solid transparent; transition: all 0.2s ease; }
+        .color-option.active { border-color: var(--text); transform: scale(1.2); box-shadow: 0 0 10px currentColor; }
+        .color-red { background: #e94560; }
+        .color-gold { background: #feca57; }
+        .color-cyan { background: #00d9ff; }
+        .color-white { background: #ffffff; }
+        .color-purple { background: #a855f7; }
+
+        .mode-toggle {
+            display: flex; align-items: center; gap: 10px;
+            background: var(--btn-secondary-bg); padding: 10px 20px;
+            border-radius: 50px; border: 1px solid var(--btn-secondary-border);
+            backdrop-filter: blur(8px);
+        }
+        .mode-toggle label { font-size: 0.9rem; color: var(--text-dim); }
+        .toggle-switch { position: relative; width: 50px; height: 26px; background: rgba(0,0,0,0.12); border-radius: 13px; cursor: pointer; transition: background 0.3s; }
+        .toggle-switch.active { background: var(--accent); }
+        .toggle-switch::after {
+            content: ''; position: absolute; width: 22px; height: 22px;
+            background: white; border-radius: 50%; top: 2px; left: 2px;
+            transition: transform 0.3s;
+        }
+        .toggle-switch.active::after { transform: translateX(24px); }
+
+        /* ==================== 状态提示 ==================== */
+        .status {
+            margin-top: 20px; padding: 12px 24px; border-radius: 10px; font-size: 0.9rem;
+            display: flex; align-items: center; gap: 10px; transition: all 0.3s ease;
+            position: relative; z-index: 10;
+            backdrop-filter: blur(8px);
+        }
+        .status.waiting { background: var(--status-waiting-bg); color: var(--status-waiting-text); border: 1px solid var(--status-waiting-border); }
+        .status.ready { background: var(--status-ready-bg); color: var(--status-ready-text); border: 1px solid var(--status-ready-border); }
+        .status.drawing { background: var(--status-drawing-bg); color: var(--status-drawing-text); border: 1px solid var(--status-drawing-border); }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; animation: pulse 1.5s infinite; }
+        .status.waiting .status-dot { background: var(--status-waiting-text); }
+        .status.ready .status-dot { background: var(--status-ready-text); }
+        .status.drawing .status-dot { background: var(--status-drawing-text); }
+        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.2)} }
+
+        /* ==================== 使用说明 ==================== */
+        .instructions {
+            margin-top: 20px; text-align: center; color: var(--text-dim); font-size: 0.85rem;
+            line-height: 1.8; max-width: 600px; position: relative; z-index: 10;
+            transition: opacity 0.5s ease;
+            background: var(--surface);
+            padding: 15px 25px;
+            border-radius: 16px;
+            border: 1px solid var(--surface-border);
+        }
+        .instructions.hidden { opacity: 0; pointer-events: none; }
+        .instructions span { color: var(--accent); font-weight: 600; }
+
+        /* ==================== Loading ==================== */
+        .loading-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--loading-bg); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+            transition: opacity 0.5s ease;
+        }
+        .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+        .spinner { width: 50px; height: 50px; border: 3px solid rgba(0,0,0,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { margin-top: 15px; color: var(--loading-text); font-size: 0.9rem; }
+
+        /* ==================== AI场景输入弹窗 ==================== */
+        .scene-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(8px);
+            z-index: 300; display: none; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.4s ease;
+        }
+        .scene-modal.active { display: flex; opacity: 1; }
+        .scene-box {
+            background: var(--modal-bg);
+            border: 1px solid var(--modal-border); border-radius: 20px;
+            padding: 35px; width: 90%; max-width: 480px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+            transform: translateY(20px); transition: transform 0.4s ease;
+            position: relative;
+        }
+        .scene-box::before {
+            content: '(◕‿◕)♡';
+            position: absolute;
+            top: -15px; right: 20px;
+            font-size: 1.5rem;
+            opacity: 0.4;
+            color: var(--accent);
+            animation: kaomojiFloat 6s ease-in-out infinite;
+        }
+        .scene-modal.active .scene-box { transform: translateY(0); }
+        .scene-box h3 {
+            text-align: center; margin-bottom: 20px; color: var(--accent);
+            font-size: 1.3rem; letter-spacing: 2px;
+        }
+        .scene-box p { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 15px; text-align: center; }
+        .scene-input {
+            width: 100%; padding: 14px 18px; border-radius: 12px;
+            border: 1px solid var(--input-border); background: var(--input-bg);
+            color: var(--input-text); font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 1rem;
+            outline: none; transition: border-color 0.3s; margin-bottom: 20px;
+        }
+        .scene-input:focus { border-color: var(--accent); }
+        .scene-input::placeholder { color: rgba(0,0,0,0.25); }
+        .scene-buttons { display: flex; gap: 12px; justify-content: center; }
+        .ai-loading {
+            display: none; text-align: center; color: var(--accent); margin-top: 15px;
+            font-size: 0.9rem; letter-spacing: 2px;
+        }
+        .ai-loading.active { display: block; }
+
+        /* ==================== 纪念展示层 ==================== */
+        .memorial-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--memorial-bg);
+            z-index: 150; display: none; flex-direction: column;
+            align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 1s ease;
+            overflow: hidden;
+        }
+        .memorial-overlay.active { display: flex; opacity: 1; }
+        .memorial-overlay::before {
+            content: '';
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-image: radial-gradient(circle at 20% 50%, var(--memorial-accent1) 0%, transparent 50%),
+                              radial-gradient(circle at 80% 80%, var(--memorial-accent2) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .memorial-image-container {
+            position: relative; width: min(90vw, 640px); height: min(67.5vw, 480px);
+            border-radius: 20px; overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.08);
+            transform: translateY(60px) scale(0.88);
+            opacity: 0;
+            transition: all 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 10;
+        }
+        .memorial-overlay.active .memorial-image-container {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+        }
+        .memorial-image-container img { width: 100%; height: 100%; object-fit: cover; }
+
+        .cloud-text-container {
+            margin-top: 40px; text-align: center; opacity: 0;
+            transform: translateY(30px);
+            transition: all 1s ease 0.8s;
+            max-width: 700px; padding: 0 20px;
+            z-index: 10;
+        }
+        .memorial-overlay.active .cloud-text-container { opacity: 1; transform: translateY(0); }
+
+        .cloud-text {
+            font-family: 'KaiTi', 'STKaiti', 'PingFang SC', 'Microsoft YaHei', serif;
+            font-size: 1.6rem; color: var(--text);
+            line-height: 2.2; letter-spacing: 3px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            position: relative; animation: cloudFloat 6s ease-in-out infinite;
+            transition: opacity 0.8s ease;
+            min-height: 4rem;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .cloud-text::before, .cloud-text::after {
+            content: '"'; position: absolute; font-size: 3rem;
+            color: var(--accent); opacity: 0.3;
+            font-family: 'Georgia', 'Times New Roman', 'KaiTi', serif;
+        }
+        .cloud-text::before { top: -20px; left: -30px; }
+        .cloud-text::after { bottom: -30px; right: -30px; }
+        .cloud-text.fading { opacity: 0; transform: translateY(8px); }
+
+        /* ============ 轮播导航圆点 ============ */
+        .carousel-dots {
+            display: flex; gap: 10px; justify-content: center;
+            margin-top: 20px; opacity: 0;
+            transition: opacity 1s ease 1.2s;
+        }
+        .memorial-overlay.active .carousel-dots { opacity: 1; }
+        .carousel-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--text-dim); opacity: 0.3;
+            cursor: pointer; transition: all 0.4s ease;
+        }
+        .carousel-dot.active { opacity: 1; background: var(--accent); width: 24px; border-radius: 4px; }
+        @keyframes cloudFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+        .cloud-author {
+            margin-top: 15px; font-size: 0.9rem;
+            color: var(--accent); letter-spacing: 4px; font-style: italic;
+            opacity: 0; transition: opacity 1s ease 1.2s;
+        }
+        .memorial-overlay.active .cloud-author { opacity: 1; }
+
+        .memorial-controls {
+            margin-top: 40px; display: flex; gap: 20px;
+            opacity: 0; transform: translateY(20px);
+            transition: all 0.8s ease 1.5s;
+            z-index: 10;
+        }
+        .memorial-overlay.active .memorial-controls { opacity: 1; transform: translateY(0); }
+
+        .cloud-effect {
+            position: fixed; width: 220px; height: 140px;
+            pointer-events: none; z-index: 160; opacity: 0;
+            transition: opacity 2s ease;
+        }
+        .memorial-overlay.active .cloud-effect { opacity: 0.6; }
+        .cloud-left { left: -60px; top: 15%; animation: cloudDriftLeft 22s linear infinite; }
+        .cloud-right { right: -60px; top: 55%; animation: cloudDriftRight 26s linear infinite; }
+        .cloud-top { right: 30%; top: -40px; animation: cloudDriftLeft 28s linear infinite; animation-delay: 5s; }
+        .cloud-mid { left: 40%; bottom: -30px; animation: cloudDriftRight 24s linear infinite; animation-delay: 3s; }
+
+        /* ============ 纪念页颜文字装饰 ============ */
+        .mem-kaomoji {
+            position: fixed; pointer-events: none; z-index: 161;
+            font-size: 1.3rem; opacity: 0;
+            transition: opacity 1.5s ease;
+            color: var(--text-dim);
+            text-shadow: 0 0 10px var(--accent-light);
+        }
+        .memorial-overlay.active .mem-kaomoji { opacity: 0.45; }
+        .mem-k1 { top: 10%; left: 8%; animation: memFloat1 9s ease-in-out infinite; }
+        .mem-k2 { top: 18%; right: 12%; animation: memFloat2 11s ease-in-out infinite; animation-delay: 1s; font-size: 1rem; }
+        .mem-k3 { top: 40%; left: 5%; animation: memFloat3 10s ease-in-out infinite; animation-delay: 2s; font-size: 1.1rem; }
+        .mem-k4 { bottom: 25%; right: 8%; animation: memFloat1 12s ease-in-out infinite; animation-delay: 0.5s; }
+        .mem-k5 { bottom: 12%; left: 12%; animation: memFloat2 8s ease-in-out infinite; animation-delay: 3s; font-size: 0.95rem; }
+        .mem-k6 { top: 55%; right: 15%; animation: memFloat3 13s ease-in-out infinite; animation-delay: 4s; font-size: 1.15rem; }
+
+        @keyframes memFloat1 {
+            0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.35; }
+            50% { transform: translateY(-16px) rotate(5deg); opacity: 0.55; }
+        }
+        @keyframes memFloat2 {
+            0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.4; }
+            33% { transform: translateY(-12px) rotate(-3deg); opacity: 0.55; }
+            66% { transform: translateY(10px) rotate(2deg); opacity: 0.3; }
+        }
+        @keyframes memFloat3 {
+            0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.3; }
+            25% { transform: translateY(-8px) rotate(-4deg); opacity: 0.5; }
+            75% { transform: translateY(14px) rotate(3deg); opacity: 0.35; }
+        }
+
+        .cloud-shape {
+            width: 100%; height: 70px; background: var(--cloud-shape-bg);
+            border-radius: 100px; position: relative; filter: blur(25px);
+        }
+        .cloud-shape::before, .cloud-shape::after {
+            content: ''; position: absolute; background: var(--cloud-shape-before-bg);
+            border-radius: 100px; filter: blur(20px);
+        }
+        .cloud-shape::before { width: 90px; height: 90px; top: -45px; left: 25px; }
+        .cloud-shape::after { width: 110px; height: 80px; top: -35px; right: 25px; }
+
+        @keyframes cloudDriftLeft {
+            0%,100%{transform:translate(0,0)} 25%{transform:translate(35px,-25px)} 50%{transform:translate(70px,15px)} 75%{transform:translate(35px,-10px)}
+        }
+        @keyframes cloudDriftRight {
+            0%,100%{transform:translate(0,0)} 25%{transform:translate(-35px,20px)} 50%{transform:translate(-70px,-15px)} 75%{transform:translate(-35px,10px)}
+        }
+
+        @media (max-width: 768px) {
+            .video-container { width: 100vw; height: 75vw; }
+            .header h1 { font-size: 1.4rem; letter-spacing: 2px; }
+            .header p { font-size: 0.75rem; letter-spacing: 1px; }
+            .controls { padding: 0 8px; gap: 8px; margin-top: 15px; }
+            .btn { padding: 10px 18px; font-size: 0.8rem; letter-spacing: 1px; }
+            .color-picker { padding: 6px 12px; gap: 6px; }
+            .color-picker label { font-size: 0.75rem; }
+            .color-option { width: 24px; height: 24px; }
+            .mode-toggle { padding: 6px 12px; }
+            .mode-toggle label { font-size: 0.75rem; }
+            .memorial-image-container { width: 95vw; height: 71.25vw; }
+            .cloud-text { font-size: 1.05rem; }
+            .cloud-text::before, .cloud-text::after { font-size: 2rem; }
+            .cloud-text::before { left: -20px; }
+            .cloud-text::after { right: -20px; }
+            .scene-box { padding: 20px; width: 95%; }
+            .kaomoji { font-size: 0.85rem !important; }
+            .theme-switcher { top: 8px; right: 8px; }.status { padding: 8px 16px; font-size: 0.75rem; margin-top: 12px; }
+            .instructions { padding: 10px 15px; font-size: 0.7rem; line-height: 1.6; }
+            .memorial-controls { gap: 12px; margin-top: 20px; }
+            .cloud-text-container { margin-top: 20px; }
+            .carousel-dots { margin-top: 12px; }
+            body { padding: 10px; }
+            .input-mode-toggle { padding: 3px 8px; }
+            .input-mode-btn { padding: 4px 10px; font-size: 0.7rem; }
+            .signer-picker { padding: 3px 8px; }
+            .signer-picker label { font-size: 0.7rem; }
+            .signer-btn { width: 22px; height: 22px; font-size: 0.85rem; }
+            .signer-num { font-size: 0.95rem; }
+        }
+
+        /* ============ 输入模式切换 ============ */
+        .input-mode-toggle {
+            display: flex; align-items: center; gap: 6px;
+            background: var(--btn-secondary-bg); padding: 4px 12px;
+            border-radius: 50px; border: 1px solid var(--btn-secondary-border);
+            backdrop-filter: blur(8px);
+        }
+        .input-mode-toggle label { font-size: 0.8rem; color: var(--text-dim); }
+        .input-mode-btn {
+            padding: 5px 13px; border-radius: 20px; border: none;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 0.75rem; font-weight: 600;
+            cursor: pointer; transition: all 0.3s;
+            background: transparent; color: var(--text-dim);
+        }
+        .input-mode-btn.active {
+            background: var(--accent); color: #fff;
+        }
+
+        /* ============ 人数选择器 ============ */
+        .signer-picker {
+            display: flex; align-items: center; gap: 4px;
+            background: var(--btn-secondary-bg); padding: 4px 10px;
+            border-radius: 50px; border: 1px solid var(--btn-secondary-border);
+            backdrop-filter: blur(8px);
+        }
+        .signer-picker label { font-size: 0.8rem; color: var(--text-dim); }
+        .signer-btn {
+            width: 26px; height: 26px; border-radius: 50%;
+            border: 1px solid var(--surface-border);
+            background: var(--surface); color: var(--text);
+            font-size: 1rem; cursor: pointer; display: flex;
+            align-items: center; justify-content: center;
+            transition: all 0.2s;
+            line-height: 1;
+        }
+        .signer-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .signer-num {
+            font-size: 1.1rem; font-weight: 700; color: var(--accent);
+            min-width: 22px; text-align: center;
+        }
+
+        /* ============ 触屏画布 ============ */
+        .touch-canvas-area {
+            display: none; position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            border-radius: 20px; overflow: hidden;
+        }
+        .touch-canvas-area.show { display: block; }
+        #touch_canvas {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            touch-action: none; cursor: crosshair;
+            background: transparent;
+            transform: scaleX(-1);
+        }
+        .touch-hint {
+            position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+            color: rgba(255,255,255,0.5); font-size: 0.7rem; pointer-events: none;
+            z-index: 5; letter-spacing: 2px; transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body data-theme="warm">
+
+    <!-- 主题切换 -->
+    <div class="theme-switcher">
+        <button class="theme-btn warm" onclick="setTheme('warm')" title="黄白暖色调"></button>
+        <button class="theme-btn rose" onclick="setTheme('rose')" title="粉白暖色调"></button>
+    </div>
+
+    <div class="kaomoji kaomoji-1" id="kaomoji1">(◕‿◕)♡</div>
+    <div class="kaomoji kaomoji-2" id="kaomoji2">✨</div>
+    <div class="kaomoji kaomoji-3" id="kaomoji3">(｡♥‿♥｡)</div>
+    <div class="kaomoji kaomoji-4" id="kaomoji4">☁️</div>
+    <div class="kaomoji kaomoji-5" id="kaomoji5">(ﾉ◕ヮ◕)ﾉ*</div>
+    <div class="kaomoji kaomoji-6" id="kaomoji6">🌙</div>
+
+    <div class="diag-lines"></div>
+
+    <div class="header" id="mainHeader">
+        <h1>镜头签</h1>
+        <p>LENS SIGNATURE</p>
+    </div>
+
+    <div class="main-container" id="mainContainer">
+        <div class="video-container" id="videoContainer">
+            <!-- 追踪质量指示器 -->
+            <div class="tracking-indicator" id="trackingIndicator">
+                <div class="tracking-dot" id="trackingDot"></div>
+                <span id="trackingLabel">追踪质量: --</span>
+            </div>
+            <div class="multiplayer-indicator" id="multiplayerIndicator">多人模式 · 轮流签名</div>
+            <div class="signature-count" id="signatureCount">当前签名: 1/2</div>
+            <video id="input_video" autoplay playsinline webkit-playsinline muted></video>
+            <canvas id="output_canvas"></canvas>
+            <canvas id="drawing_canvas"></canvas>
+            <div class="loading-overlay" id="loadingOverlay">
+                <div class="spinner"></div>
+                <div class="loading-text" id="loadingTextEl">正在初始化摄像头和AI模型...</div>
+                <button class="btn btn-primary" id="startCameraBtn" style="margin-top:20px; display:none;">
+                    📷 点击启动摄像头
+                </button>
+                <p id="mobileHint" style="margin-top:12px; font-size:0.75rem; color:var(--text-dim); display:none; text-align:center;">
+                    iOS/Android 浏览器需手动授权摄像头权限
+                </p>
+            </div>
+            <!-- 触屏画布 -->
+            <div class="touch-canvas-area" id="touchArea">
+                <canvas id="touch_canvas"></canvas>
+                <div class="touch-hint" id="touchHint">用手指在画布上书写</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls" id="mainControls">
+        <div class="input-mode-toggle">
+            <label>输入:</label>
+            <button class="input-mode-btn active" id="modeGestureBtn">🤌 手势</button>
+            <button class="input-mode-btn" id="modeTouchBtn">👆 触屏</button>
+        </div>
+        <div class="signer-picker">
+            <label>协作人数:</label>
+            <button class="signer-btn" id="signerMinus">−</button>
+            <span class="signer-num" id="signerNum">1</span>
+            <button class="signer-btn" id="signerPlus">+</button>
+        </div>
+        <div class="color-picker">
+            <label>笔触:</label>
+            <div class="color-option color-red active" data-color="#e94560"></div>
+            <div class="color-option color-gold" data-color="#feca57"></div>
+            <div class="color-option color-cyan" data-color="#00d9ff"></div>
+            <div class="color-option color-white" data-color="#ffffff"></div>
+            <div class="color-option color-purple" data-color="#a855f7"></div>
+        </div>
+        <button class="btn btn-secondary" id="clearBtn">清空画布</button>
+        <button class="btn btn-secondary" id="nextSignerBtn" style="display:none;">下一位签名</button>
+        <button class="btn btn-primary" id="saveBtn">保存签名</button>
+    </div>
+
+    <div class="status waiting" id="status">
+        <div class="status-dot"></div>
+        <span id="statusText">等待摄像头权限...</span>
+    </div>
+
+    <!-- PWA 安装提示 -->
+    <div id="pwaInstallHint" style="
+        display:none; text-align:center; margin-top:12px; padding:10px 16px;
+        background:var(--surface); border-radius:12px; border:1px solid var(--surface-border);
+        font-size:0.8rem; color:var(--text-dim); z-index:20; position:relative;
+        max-width:500px; backdrop-filter:blur(10px);
+    "></div>
+
+    <div class="instructions" id="instructions">
+        <p>🖐 <span>使用方式:</span> 对摄像头张开手掌激活→移动食指开始书写→握拳停止<br>
+        ✨ 书写时无需保持特定手势，尽情挥洒即可<br>
+        👥 开启多人模式可与朋友一起创作纪念镜头签<br>
+        💾 完成后点击"保存签名"，AI将为你生成唯美纪念文案</p>
+    </div>
+
+    <div class="scene-modal" id="sceneModal">
+        <div class="scene-box">
+            <h3>✨ 纪念这一刻</h3>
+            <p>告诉 AI 这是什么场合，它将为你写一句专属文案</p>
+            <input type="text" class="scene-input" id="sceneInput" placeholder="例如：毕业留念、兄弟聚会、跨年之夜、恋爱一周年..." maxlength="30">
+            <div class="ai-loading" id="aiLoading">AI 正在构思文案...</div>
+            <div class="scene-buttons">
+                <button class="btn btn-secondary" id="cancelSceneBtn">取消</button>
+                <button class="btn btn-primary" id="confirmSceneBtn">生成文案</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="memorial-overlay" id="memorialOverlay">
+        <!-- 云朵装饰 -->
+        <div class="cloud-effect cloud-left"><div class="cloud-shape"></div></div>
+        <div class="cloud-effect cloud-right"><div class="cloud-shape"></div></div>
+        <div class="cloud-effect cloud-top"><div class="cloud-shape"></div></div>
+        <div class="cloud-effect cloud-mid"><div class="cloud-shape"></div></div>
+
+        <!-- 纪念页颜文字装饰 -->
+        <div class="mem-kaomoji mem-k1" id="memKao1">(◕‿◕)♡</div>
+        <div class="mem-kaomoji mem-k2" id="memKao2">✨</div>
+        <div class="mem-kaomoji mem-k3" id="memKao3">(｡♥‿♥｡)</div>
+        <div class="mem-kaomoji mem-k4" id="memKao4">☁️</div>
+        <div class="mem-kaomoji mem-k5" id="memKao5">(ﾉ◕ヮ◕)ﾉ*</div>
+        <div class="mem-kaomoji mem-k6" id="memKao6">🌙</div>
+
+        <div class="memorial-image-container" id="memorialImageContainer">
+            <img id="memorialImage" src="" alt="镜头签纪念">
+        </div>
+
+        <div class="cloud-text-container" id="cloudTextContainer">
+            <div class="cloud-text" id="cloudText"></div>
+            <div class="cloud-author" id="cloudAuthor"></div>
+            <div class="carousel-dots" id="carouselDots"></div>
+        </div>
+
+        <div class="memorial-controls">
+            <button class="btn btn-secondary" id="backBtn">返回重签</button>
+            <button class="btn btn-gold" id="finalSaveBtn">下载纪念版</button>
+        </div>
+    </div>
+
+    <script>
+        // (音乐播放器已移除 - 单机版)
+
+        // ==================== DeepSeek API 配置 ====================
+        // 填入你的真实密钥即可启用 AI 文案生成
+        const DEEPSEEK_API_KEY = 'sk-633b79cef6d349f8a7df919023d386c5';
+        const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+
+        // ==================== 主题切换 ====================
+        function setTheme(theme) {
+            document.body.setAttribute('data-theme', theme);
+            try { localStorage.setItem('lens-theme', theme); } catch(e) {}
+        }
+        // 读取本地存储的主题偏好
+        (function() {
+            let theme;
+            try { theme = localStorage.getItem('lens-theme'); } catch(e) {}
+            if (theme === 'warm' || theme === 'rose') {
+                document.body.setAttribute('data-theme', theme);
+            }
+        })();
+
+        const FALLBACK_QUOTES = [
+            {quote: "我们活过的刹那，前后皆是暗夜。", author: "费尔南多·佩索阿"},
+            {quote: "你站在桥上看风景，看风景的人在楼上看你。明月装饰了你的窗子，你装饰了别人的梦。", author: "卞之琳《断章》"},
+            {quote: "从前的日色变得慢，车，马，邮件都慢，一生只够爱一个人。", author: "木心《从前慢》"},
+            {quote: "草在结它的种子，风在摇它的叶子。我们站着，不说话，就十分美好。", author: "顾城《门前》"},
+            {quote: "面对大海我无限惭愧，我年华虚度，空有一身疲倦。", author: "海子《以梦为马》"},
+            {quote: "你一会看我，一会看云。我觉得，你看我时很远，你看云时很近。", author: "顾城《远和近》"},
+            {quote: "我只愿面朝大海，春暖花开。", author: "海子"},
+            {quote: "岁月不饶人，我亦未曾饶过岁月。", author: "木心"}
+        ];
+
+        // ==================== DOM 引用 ====================
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const drawingCanvas = document.getElementById('drawing_canvas');
+        const drawingCtx = drawingCanvas.getContext('2d');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingText = document.querySelector('.loading-text');
+        const statusElement = document.getElementById('status');
+        const statusText = document.getElementById('statusText');
+        const mainContainer = document.getElementById('mainContainer');
+        const mainHeader = document.getElementById('mainHeader');
+        const mainControls = document.getElementById('mainControls');
+        const instructions = document.getElementById('instructions');
+        const trackingDot = document.getElementById('trackingDot');
+        const trackingLabel = document.getElementById('trackingLabel');
+
+        const memorialOverlay = document.getElementById('memorialOverlay');
+        const memorialImage = document.getElementById('memorialImage');
+        const sceneModal = document.getElementById('sceneModal');
+        const sceneInput = document.getElementById('sceneInput');
+        const aiLoading = document.getElementById('aiLoading');
+        const multiplayerIndicator = document.getElementById('multiplayerIndicator');
+        const signatureCount = document.getElementById('signatureCount');
+        const nextSignerBtn = document.getElementById('nextSignerBtn');
+        const touchArea = document.getElementById('touchArea');
+        const touchCanvas = document.getElementById('touch_canvas');
+        const touchCtx = touchCanvas.getContext('2d');
+        const touchHint = document.getElementById('touchHint');
+        const videoContainer = document.getElementById('videoContainer');
+
+        // ==================== 状态变量 ====================
+        let currentColor = '#e94560';
+        let isDrawing = false;
+        let points = [];
+        let hands = null;
+        let camera = null;
+        let inputMode = 'gesture';       // 'gesture' | 'touch'
+        let currentSigner = 1;
+        let totalSigners = 1;
+        let isMultiplayer = false;       // computed: totalSigners > 1
+        let signatureLayers = [];
+        let pendingComposite = null;
+
+        // ==================== 【锁存模式】状态变量 ====================
+        // 锁存模式：张开手指一次 → 进入"持笔"状态 → 随意写 → 握拳 → 停笔
+        const DRAW_STATE = { IDLE: 'idle', ARMED: 'armed', DRAWING: 'drawing' };
+        let drawState = DRAW_STATE.IDLE;
+        let lastKnownX = null;
+        let lastKnownY = null;
+        let prevFrameX = null;           // 上一帧坐标（用于检测移动）
+        let smoothedX = null;
+        let smoothedY = null;
+        let lostFrameCount = 0;
+        let fistFrameCount = 0;          // 连续握拳帧计数
+        let openHandFrameCount = 0;      // 连续张开手掌帧计数
+        const MAX_LOST_FRAMES = 15;
+        const FIST_TRIGGER = 5;          // 连续握拳 5 帧 → 停笔
+        const OPEN_TRIGGER = 4;          // 连续张开 4 帧 → 进入持笔
+        const SMOOTHING_FACTOR = 0.55;
+        const MIN_MOVE_DIST = 1.2;       // 最小移动距离（防抖：不到 1.2px 不画线）
+
+        // === 涟漪特效数组 ===
+        let ripples = [];                // { x, y, radius, maxRadius, opacity, color, speed }
+
+        function resizeCanvas() {
+            const container = document.querySelector('.video-container');
+            canvasElement.width = container.offsetWidth;
+            canvasElement.height = container.offsetHeight;
+            drawingCanvas.width = container.offsetWidth;
+            drawingCanvas.height = container.offsetHeight;
+            touchCanvas.width = container.offsetWidth;
+            touchCanvas.height = container.offsetHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ==================== 追踪质量指示器 ====================
+        function updateTrackingQuality(confidence) {
+            if (confidence >= 0.7) {
+                trackingDot.className = 'tracking-dot good';
+                trackingLabel.textContent = '追踪质量: 良好';
+            } else if (confidence >= 0.4) {
+                trackingDot.className = 'tracking-dot ok';
+                trackingLabel.textContent = '追踪质量: 一般';
+            } else {
+                trackingDot.className = 'tracking-dot poor';
+                trackingLabel.textContent = '追踪质量: 较弱';
+            }
+        }
+
+        // ==================== 输入模式切换 + 人数选择器 + 触屏绘制 ====================
+        const modeGestureBtn = document.getElementById('modeGestureBtn');
+        const modeTouchBtn = document.getElementById('modeTouchBtn');
+
+        function setInputMode(mode) {
+            inputMode = mode;
+            if (mode === 'gesture') {
+                modeGestureBtn.classList.add('active');
+                modeTouchBtn.classList.remove('active');
+                touchArea.classList.remove('show');
+                document.getElementById('input_video').style.display = '';
+                document.getElementById('output_canvas').style.display = '';
+                document.getElementById('drawing_canvas').style.display = '';
+                document.getElementById('loadingOverlay').style.display = '';
+                trackingIndicator.style.display = '';
+                updateStatus('waiting', '张开手掌激活书写模式');
+            } else {
+                modeGestureBtn.classList.remove('active');
+                modeTouchBtn.classList.add('active');
+                touchArea.classList.add('show');
+                // 保留摄像头画面可见，不隐藏
+                updateStatus('ready', '👆 触屏模式 - 手指在画布上书写');
+                touchHint.style.opacity = '1';
+                setTimeout(() => { touchHint.style.opacity = '0.3'; }, 3000);
+            }
+        }
+
+        modeGestureBtn.addEventListener('click', () => setInputMode('gesture'));
+        modeTouchBtn.addEventListener('click', () => setInputMode('touch'));
+
+        // 触屏绘制（touch + mouse）
+        let touchDrawing = false;
+        let touchPointsArr = [];
+
+        function touchDrawStart(x, y) {
+            touchDrawing = true;
+            touchPointsArr = [{x: touchCanvas.width - x, y}];
+            touchHint.style.opacity = '0';
+         }
+         function touchDrawMove(x, y) {
+            if (!touchDrawing) return;
+            const mx = touchCanvas.width - x;
+            touchPointsArr.push({x: mx, y});
+            if (touchPointsArr.length > 1) drawSmoothLine(touchCtx, touchPointsArr.slice(-3), currentColor);
+        }
+        function touchDrawEnd() { touchDrawing = false; touchPointsArr = []; }
+
+        touchCanvas.addEventListener('touchstart', (e) => {
+            if (inputMode !== 'touch') return;
+            e.preventDefault();
+            const t = e.touches[0];
+            const rect = touchCanvas.getBoundingClientRect();
+            touchDrawStart(t.clientX - rect.left, t.clientY - rect.top);
+        }, {passive: false});
+        touchCanvas.addEventListener('touchmove', (e) => {
+            if (inputMode !== 'touch') return;
+            e.preventDefault();
+            const t = e.touches[0];
+            const rect = touchCanvas.getBoundingClientRect();
+            touchDrawMove(t.clientX - rect.left, t.clientY - rect.top);
+        }, {passive: false});
+        touchCanvas.addEventListener('touchend', () => touchDrawEnd());
+        touchCanvas.addEventListener('mousedown', (e) => {
+            if (inputMode !== 'touch') return;
+            const rect = touchCanvas.getBoundingClientRect();
+            touchDrawStart(e.clientX - rect.left, e.clientY - rect.top);
+        });
+        touchCanvas.addEventListener('mousemove', (e) => {
+            if (inputMode !== 'touch') return;
+            const rect = touchCanvas.getBoundingClientRect();
+            touchDrawMove(e.clientX - rect.left, e.clientY - rect.top);
+        });
+        touchCanvas.addEventListener('mouseup', () => touchDrawEnd());
+        touchCanvas.addEventListener('mouseleave', () => touchDrawEnd());
+
+        // 人数选择器
+        function updateMultiplayerState() {
+            isMultiplayer = totalSigners > 1;
+            document.getElementById('signerNum').textContent = totalSigners;
+            if (isMultiplayer) {
+                multiplayerIndicator.classList.add('active');
+                signatureCount.classList.add('active');
+                nextSignerBtn.style.display = 'inline-block';
+                currentSigner = Math.min(currentSigner, totalSigners);
+                updateSignatureCount();
+            } else {
+                multiplayerIndicator.classList.remove('active');
+                signatureCount.classList.remove('active');
+                nextSignerBtn.style.display = 'none';
+                signatureLayers = [];
+            }
+        }
+        document.getElementById('signerPlus').addEventListener('click', () => {
+            if (totalSigners < 6) { totalSigners++; updateMultiplayerState(); }
+        });
+        document.getElementById('signerMinus').addEventListener('click', () => {
+            if (totalSigners > 1) { totalSigners--; updateMultiplayerState(); }
+        });
+        updateMultiplayerState();
+
+        function updateSignatureCount() {
+            signatureCount.textContent = `当前签名: ${currentSigner}/${totalSigners}`;
+        }
+
+        // ==================== 颜色选择 ====================
+        document.querySelectorAll('.color-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.color-option').forEach(o => o.classList.remove('active'));
+                this.classList.add('active');
+                currentColor = this.dataset.color;
+            });
+        });
+
+        // ==================== 线条绘制 ====================
+        function drawSmoothLine(ctx, pts, color) {
+            if (pts.length < 2) return;
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3.5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = color;
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length - 1; i++) {
+                const xc = (pts[i].x + pts[i+1].x) / 2;
+                const yc = (pts[i].y + pts[i+1].y) / 2;
+                ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+            }
+            if (pts.length > 1) {
+                const last = pts[pts.length-1];
+                ctx.lineTo(last.x, last.y);
+            }
+            ctx.stroke();
+        }
+
+        // ==================== 手势检测辅助函数 ====================
+        function dist3d(a, b) {
+            return Math.hypot(a.x - b.x, a.y - b.y, (a.z || 0) - (b.z || 0));
+        }
+
+        // 检测是否所有手指都握拳（指尖靠近MCP关节）
+        function isFist(landmarks) {
+            const tips    = [8, 12, 16, 20];  // 食指、中指、无名指、小指指尖
+            const mcps    = [5, 9,  13, 17];  // 对应 MCP 根部
+            let curledCount = 0;
+            const wrist = landmarks[0];
+            for (let i = 0; i < tips.length; i++) {
+                const tipDist = dist3d(landmarks[tips[i]], wrist);
+                const mcpDist = dist3d(landmarks[mcps[i]], wrist);
+                // 指尖比 MCP 关节更近手腕 → 手指卷曲
+                if (tipDist < mcpDist * 0.95) curledCount++;
+            }
+            return curledCount >= 3; // 至少 3 根手指卷曲 → 握拳
+        }
+
+        // 检测是否手掌张开（多根手指伸展）
+        function isOpenHand(landmarks) {
+            const tips    = [8, 12, 16, 20];
+            const mcps    = [5, 9,  13, 17];
+            let extendedCount = 0;
+            const wrist = landmarks[0];
+            for (let i = 0; i < tips.length; i++) {
+                const tipDist = dist3d(landmarks[tips[i]], wrist);
+                const mcpDist = dist3d(landmarks[mcps[i]], wrist);
+                if (tipDist > mcpDist * 1.08) extendedCount++;
+            }
+            return extendedCount >= 3; // 至少 3 根手指伸展 → 张开
+        }
+
+        // ==================== 【锁存模式】核心 onResults ====================
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                lostFrameCount = 0;
+
+                // 取食指指尖作为书写点
+                const indexTip = landmarks[8];
+                const rawX = indexTip.x * canvasElement.width;
+                const rawY = indexTip.y * canvasElement.height;
+
+                // EMA 平滑
+                if (smoothedX === null) {
+                    smoothedX = rawX;
+                    smoothedY = rawY;
+                } else {
+                    smoothedX = smoothedX + SMOOTHING_FACTOR * (rawX - smoothedX);
+                    smoothedY = smoothedY + SMOOTHING_FACTOR * (rawY - smoothedY);
+                }
+                const x = smoothedX;
+                const y = smoothedY;
+
+                updateTrackingQuality(0.85);
+                lastKnownX = x;
+                lastKnownY = y;
+
+                // === 锁存状态机 ===
+                const fist = isFist(landmarks);
+                const open = isOpenHand(landmarks);
+
+                switch (drawState) {
+                    case DRAW_STATE.IDLE:
+                        // IDLE → 手掌张开 → ARMED
+                        if (open) {
+                            openHandFrameCount++;
+                            if (openHandFrameCount >= OPEN_TRIGGER) {
+                                drawState = DRAW_STATE.ARMED;
+                                openHandFrameCount = 0;
+                                fistFrameCount = 0;
+                                prevFrameX = x;
+                                prevFrameY = y;
+                                updateStatus('ready', '🖐 已就绪，移动食指开始书写');
+                            }
+                        } else {
+                            openHandFrameCount = Math.max(0, openHandFrameCount - 1);
+                            if (drawState === DRAW_STATE.IDLE) {
+                                updateStatus('waiting', '张开手掌激活书写模式');
+                            }
+                        }
+                        // 绘制提示光标（小圆圈）
+                        canvasCtx.beginPath();
+                        canvasCtx.arc(x, y, 6, 0, 2 * Math.PI);
+                        canvasCtx.strokeStyle = 'rgba(255,255,255,0.4)';
+                        canvasCtx.lineWidth = 2;
+                        canvasCtx.stroke();
+                        break;
+
+                    case DRAW_STATE.ARMED:
+                        // ARMED + 握拳 → 退回 IDLE
+                        if (fist) {
+                            fistFrameCount++;
+                            if (fistFrameCount >= FIST_TRIGGER) {
+                                drawState = DRAW_STATE.IDLE;
+                                fistFrameCount = 0;
+                                prevFrameX = null;
+                                prevFrameY = null;
+                                updateStatus('waiting', '张开手掌激活书写模式');
+                            }
+                        } else {
+                            fistFrameCount = 0;
+                        }
+
+                        // ARMED → 移动超过阈值 → 开始 DRAWING
+                        if (prevFrameX !== null) {
+                            const dx = x - prevFrameX;
+                            const dy = y - prevFrameY;
+                            if (Math.hypot(dx, dy) > MIN_MOVE_DIST * 2) {
+                                drawState = DRAW_STATE.DRAWING;
+                                isDrawing = true;
+                                points = [{x, y}];
+                                updateStatus('drawing', '✍️ 正在书写...握拳停止');
+                            }
+                        }
+
+                        // 绘制就绪光标（大绿圈）
+                        canvasCtx.beginPath();
+                        canvasCtx.arc(x, y, 14, 0, 2 * Math.PI);
+                        canvasCtx.strokeStyle = 'rgba(105,240,174,0.8)';
+                        canvasCtx.lineWidth = 3;
+                        canvasCtx.setLineDash([4, 4]);
+                        canvasCtx.stroke();
+                        canvasCtx.setLineDash([]);
+                        // 内圈
+                        canvasCtx.beginPath();
+                        canvasCtx.arc(x, y, 5, 0, 2 * Math.PI);
+                        canvasCtx.fillStyle = 'rgba(105,240,174,0.6)';
+                        canvasCtx.fill();
+                        break;
+
+                    case DRAW_STATE.DRAWING:
+                        // DRAWING → 握拳 → 停笔回 IDLE
+                        if (fist) {
+                            fistFrameCount++;
+                            if (fistFrameCount >= FIST_TRIGGER) {
+                                isDrawing = false;
+                                points = [];
+                                drawState = DRAW_STATE.IDLE;
+                                fistFrameCount = 0;
+                                prevFrameX = null;
+                                prevFrameY = null;
+                                smoothedX = null;
+                                smoothedY = null;
+                                updateStatus('waiting', '✊ 已停笔，张开手掌重新开始');
+                            }
+                        } else {
+                            fistFrameCount = 0;
+                            // 继续画线（无需保持任何特定手势！）
+                            if (isDrawing && !fist) {
+                                points.push({x, y});
+                                // 防抖：只有移动超过阈值才画线
+                                if (points.length > 1) {
+                                    const prev = points[points.length - 2];
+                                    const dist = Math.hypot(x - prev.x, y - prev.y);
+                                    if (dist > MIN_MOVE_DIST) {
+                                        drawSmoothLine(drawingCtx, points.slice(-3), currentColor);
+                                    }
+                                }
+                            }
+                        }
+
+                        // 绘制书写光标（实心大圆）
+                        canvasCtx.beginPath();
+                        canvasCtx.arc(x, y, 10, 0, 2 * Math.PI);
+                        canvasCtx.fillStyle = currentColor;
+                        canvasCtx.fill();
+                        canvasCtx.strokeStyle = 'white';
+                        canvasCtx.lineWidth = 2;
+                        canvasCtx.stroke();
+                        break;
+                }
+
+                // === 每帧结束时更新上一帧坐标 ===
+                prevFrameX = x;
+                prevFrameY = y;
+
+                // 绘制手部骨架（减淡）
+                if (typeof drawConnectors === 'function') {
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS,
+                        {color: 'rgba(255,255,255,0.15)', lineWidth: 1});
+                }
+                if (typeof drawLandmarks === 'function') {
+                    drawLandmarks(canvasCtx, landmarks,
+                        {color: currentColor, lineWidth: 1, radius: 2});
+                }
+            } else {
+                // 手消失时的处理
+                lostFrameCount++;
+                updateTrackingQuality(0);
+
+                if (drawState === DRAW_STATE.DRAWING && lostFrameCount <= MAX_LOST_FRAMES) {
+                    // 短暂消失：惯性外推
+                    if (points.length > 0 && lostFrameCount > 1 && lostFrameCount <= 5) {
+                        const lastPt = points[points.length - 1];
+                        const prevPt = points.length > 1 ? points[points.length - 2] : lastPt;
+                        const dx = lastPt.x - prevPt.x;
+                        const dy = lastPt.y - prevPt.y;
+                        const decay = Math.max(0, 1 - (lostFrameCount - 1) * 0.25);
+                        const estX = lastPt.x + dx * decay * 0.3;
+                        const estY = lastPt.y + dy * decay * 0.3;
+                        points.push({x: estX, y: estY});
+                        drawSmoothLine(drawingCtx, points.slice(-3), currentColor);
+                    }
+                } else if (lostFrameCount > MAX_LOST_FRAMES) {
+                    // 太久没手，全部重置
+                    isDrawing = false;
+                    points = [];
+                    drawState = DRAW_STATE.IDLE;
+                    fistFrameCount = 0;
+                    openHandFrameCount = 0;
+                    lastKnownX = null;
+                    lastKnownY = null;
+                    prevFrameX = null;
+                    prevFrameY = null;
+                    smoothedX = null;
+                    smoothedY = null;
+                    updateStatus('waiting', '张开手掌激活书写模式');
+                }
+            }
+
+            // ========== 涟漪特效（随音乐律动） ==========
+            const energy = 0.15; // 随机涟漪
+            const w = canvasElement.width;
+            const h = canvasElement.height;
+
+            // Beat 触发新涟漪：在手指位置或画面中心
+            if (Math.random() < 0.08) // 随机涟漪触发 {
+                const cx = (lastKnownX !== null) ? lastKnownX : w / 2 + (Math.random() - 0.5) * w * 0.3;
+                const cy = (lastKnownY !== null) ? lastKnownY : h / 2 + (Math.random() - 0.5) * h * 0.3;
+                const maxR = 80 + energy * 200;
+                ripples.push({
+                    x: cx, y: cy,
+                    radius: 2,
+                    maxRadius: maxR,
+                    opacity: 0.45 + energy * 0.35,
+                    color: currentColor,
+                    speed: 1.8 + energy * 4
+                });
+                // 限制涟漪数量
+                if (ripples.length > 12) ripples.shift();
+            }
+
+            // 小幅涟漪：能量持续时产生
+            if (Math.random() < 0.06) {
+                ripples.push({
+                    x: w * 0.2 + Math.random() * w * 0.6,
+                    y: h * 0.2 + Math.random() * h * 0.6,
+                    radius: 1,
+                    maxRadius: 25 + energy * 60,
+                    opacity: 0.15 + energy * 0.2,
+                    color: currentColor,
+                    speed: 1.0 + energy * 3
+                });
+            }
+
+            // 更新并绘制涟漪
+            canvasCtx.save();
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                const r = ripples[i];
+                r.radius += r.speed;
+                const progress = r.radius / r.maxRadius;
+                const fadeOpacity = r.opacity * (1 - progress) * (1 - progress);
+
+                if (progress >= 1 || fadeOpacity < 0.02) {
+                    ripples.splice(i, 1);
+                    continue;
+                }
+
+                // 外圈
+                canvasCtx.beginPath();
+                canvasCtx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+                canvasCtx.strokeStyle = r.color;
+                canvasCtx.globalAlpha = fadeOpacity;
+                canvasCtx.lineWidth = 1.5 * (1 - progress);
+                canvasCtx.shadowBlur = 6 * (1 - progress);
+                canvasCtx.shadowColor = r.color;
+                canvasCtx.stroke();
+
+                // 内圈（层叠效果）
+                const innerR = r.radius * 0.55;
+                if (innerR > 2) {
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(r.x, r.y, innerR, 0, Math.PI * 2);
+                    canvasCtx.globalAlpha = fadeOpacity * 0.6;
+                    canvasCtx.lineWidth = 1 * (1 - progress);
+                    canvasCtx.stroke();
+                }
+            }
+            canvasCtx.globalAlpha = 1;
+            canvasCtx.shadowBlur = 0;
+            canvasCtx.restore();
+
+            canvasCtx.restore();
+        }
+
+        function updateStatus(state, text) {
+            statusElement.className = `status ${state}`;
+            statusText.textContent = text;
+        }
+
+        function checkBrowserSupport() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('您的浏览器不支持摄像头访问，请使用 Chrome、Firefox 或 Edge 浏览器');
+            }
+        }
+
+        // ==================== 初始化 MediaPipe Hands ====================
+        async function initHands() {
+            return new Promise((resolve, reject) => {
+                try {
+                    const handsInstance = new Hands({locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                    }});
+                    // === 修复 4: 大幅降低置信度阈值 ===
+                    handsInstance.setOptions({
+                        maxNumHands: 1,
+                        modelComplexity: 1,
+                        minDetectionConfidence: 0.3,   // 从 0.5 → 0.3
+                        minTrackingConfidence: 0.3     // 从 0.5 → 0.3
+                    });
+                    handsInstance.onResults(onResults);
+                    handsInstance.initialize().then(() => resolve(handsInstance)).catch(reject);
+                } catch (err) { reject(err); }
+            });
+        }
+
+        async function initCamera() {
+            return new Promise((resolve, reject) => {
+                try {
+                    // 移动端优先使用前置摄像头，桌面端也默认前置
+                    const cameraInstance = new Camera(videoElement, {
+                        onFrame: async () => {
+                            if (hands) await hands.send({image: videoElement});
+                        },
+                        facingMode: 'user',       // 前置摄像头 (手机自拍镜头)
+                        width: 640,
+                        height: 480
+                    });
+                    resolve(cameraInstance);
+                } catch (err) { reject(err); }
+            });
+        }
+
+        // ==================== AI 生成颜文字装饰 ====================
+        async function generateKaomoji() {
+            if (DEEPSEEK_API_KEY === 'sk-你的DeepSeek密钥') return; // 未配置密钥，保留默认
+
+            try {
+                const response = await fetch(DEEPSEEK_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "deepseek-chat",
+                        messages: [
+                            {
+                                role: "system",
+                                content: "你是一个颜文字生成器。输出6个不同的、精美的日式颜文字（kaomoji），每个单独一行。风格要求：可爱、治愈、梦幻，适合作为网页装饰漂浮元素。不要包含任何解释，不要编号，不要加引号，纯颜文字本身即可。每个颜文字不要超过15个字符。"
+                            }
+                        ],
+                        temperature: 1.0,
+                        max_tokens: 200
+                    })
+                });
+
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const content = data.choices[0].message.content.trim();
+                const lines = content.split('\n')
+                    .map(l => l.replace(/^["'\s]+|["'\s]+$/g, '').trim())
+                    .filter(l => l.length > 0 && l.length < 20);
+
+                // 逐个替换到页面上（带淡入动画）
+                for (let i = 0; i < Math.min(6, lines.length); i++) {
+                    const el = document.getElementById('kaomoji' + (i + 1));
+                    if (el && lines[i]) {
+                        el.style.opacity = '0';
+                        el.style.transition = 'opacity 1.5s ease';
+                        setTimeout(() => {
+                            el.textContent = lines[i];
+                            el.style.opacity = '0.55';
+                        }, 300 + i * 500);
+                    }
+                }
+            } catch (err) {
+                console.log('颜文字生成跳过，使用默认:', err.message);
+            }
+        }
+
+        async function init() {
+            try {
+                checkBrowserSupport();
+
+                // 等待 MediaPipe CDN 异步加载完成
+                if (!window._mediaPipeReady) {
+                    loadingText.textContent = '正在从CDN加载手势模型...';
+                    await new Promise((resolve) => {
+                        var maxWait = 40; // 最多等40秒
+                        var elapsed = 0;
+                        var check = setInterval(function() {
+                            elapsed++;
+                            loadingText.textContent = '正在加载手势模型... (' + elapsed + 's)';
+                            if (window._mediaPipeReady) {
+                                clearInterval(check);
+                                resolve();
+                            } else if (elapsed >= maxWait) {
+                                clearInterval(check);
+                                resolve(); // 超时也继续，让 initHands 报错
+                            }
+                        }, 1000);
+                    });
+                }
+                loadingText.textContent = '正在初始化AI手势模型...';
+                hands = await initHands();
+
+                // 显示"启动摄像头"按钮（满足移动端用户手势要求）
+                loadingText.textContent = 'AI模型已就绪';
+                loadingOverlay.querySelector('.spinner').style.display = 'none';
+                const startBtn = document.getElementById('startCameraBtn');
+                const mobileHint = document.getElementById('mobileHint');
+                startBtn.style.display = 'inline-block';
+                mobileHint.style.display = 'block';
+
+                startBtn.onclick = async () => {
+                    startBtn.style.display = 'none';
+                    mobileHint.style.display = 'none';
+                    loadingOverlay.querySelector('.spinner').style.display = '';
+                    loadingText.textContent = '正在启动摄像头...';
+
+                    try {
+                        camera = await initCamera();
+                        await camera.start();
+                        loadingOverlay.classList.add('hidden');
+                        updateStatus('waiting', '张开手掌激活书写模式');
+                        // 异步生成颜文字
+                        generateKaomoji();
+                        // PWA 安装提示
+                        showInstallHint();
+                    } catch (cameraErr) {
+                        console.error('摄像头启动失败:', cameraErr);
+                        loadingOverlay.querySelector('.spinner').style.display = 'none';
+                        loadingText.textContent = '摄像头访问失败: ' + getMobileFriendlyError(cameraErr);
+                        startBtn.style.display = 'inline-block';
+                        startBtn.textContent = '🔄 重试';
+                        mobileHint.style.display = 'block';
+                        mobileHint.textContent = '请确认: 1)使用HTTPS访问 2)已授权摄像头权限 3)使用Chrome/Safari浏览器';
+                    }
+                };
+            } catch (err) {
+                console.error('初始化失败:', err);
+                loadingOverlay.querySelector('.spinner').style.display = 'none';
+                loadingText.textContent = '初始化失败: ' + getMobileFriendlyError(err);
+                const startBtn = document.getElementById('startCameraBtn');
+                startBtn.style.display = 'inline-block';
+                startBtn.textContent = '🔄 重试';
+                document.getElementById('mobileHint').style.display = 'block';
+                document.getElementById('mobileHint').textContent =
+                    'iOS: 设置→Safari→摄像头→允许 | Android: 设置→应用权限→相机→允许';
+            }
+        }
+
+        // 移动端友好的错误信息
+        function getMobileFriendlyError(err) {
+            const msg = err.message || String(err);
+            if (msg.includes('NotAllowed') || msg.includes('Permission')) {
+                return '摄像头权限被拒绝，请在浏览器设置中允许摄像头访问';
+            }
+            if (msg.includes('NotFound') || msg.includes('device')) {
+                return '未检测到摄像头设备';
+            }
+            if (msg.includes('NotReadable') || msg.includes('occupied')) {
+                return '摄像头被其他应用占用，请关闭其他使用摄像头的应用';
+            }
+            if (msg.includes('HTTPS') || msg.includes('secure')) {
+                return '需要HTTPS连接才能使用摄像头';
+            }
+            return msg;
+        }
+
+        // ==================== PWA 安装提示 ====================
+        let deferredPrompt = null;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+        });
+
+        function showInstallHint() {
+            var hint = document.getElementById('pwaInstallHint');
+            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            if (isIOS) {
+                // iOS Safari: 引导用户从分享菜单添加
+                if (hint) {
+                    hint.innerHTML = '📱 点击下方 <b>分享按钮</b> → <b>添加到主屏幕</b>，即可作为独立APP使用';
+                    hint.style.display = 'block';
+                    setTimeout(function() { hint.style.opacity = '0.7'; }, 5000);
+                }
+            } else if (deferredPrompt) {
+                // Android Chrome: 显示安装按钮
+                if (hint) {
+                    hint.innerHTML = '<button id="installAppBtn" class="btn btn-primary" style="font-size:0.85rem;padding:8px 20px;">📲 安装为手机APP</button>';
+                    hint.style.display = 'block';
+                    document.getElementById('installAppBtn').addEventListener('click', function() {
+                        deferredPrompt.prompt();
+                        deferredPrompt.userChoice.then(function(result) {
+                            if (result.outcome === 'accepted') {
+                                hint.style.display = 'none';
+                            }
+                        });
+                    });
+                }
+            }
+        }
+        }
+        init();
+
+        // ==================== 按钮事件 ====================
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            // 清除手势画布
+            drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            // 清除触屏画布
+            touchCtx.clearRect(0, 0, touchCanvas.width, touchCanvas.height);
+            touchHint.style.opacity = '1';
+            setTimeout(() => { touchHint.style.opacity = '0.3'; }, 3000);
+            // 重置所有状态
+            smoothedX = null;
+            smoothedY = null;
+            lastKnownX = null;
+            lastKnownY = null;
+            prevFrameX = null;
+            prevFrameY = null;
+            drawState = DRAW_STATE.IDLE;
+            fistFrameCount = 0;
+            openHandFrameCount = 0;
+            lostFrameCount = 0;
+            isDrawing = false;
+            points = [];
+            touchPointsArr = [];
+            touchDrawing = false;
+            updateStatus('waiting', '画布已清空，张开手掌重新开始');
+            setTimeout(() => updateStatus('waiting', '张开手掌激活书写模式'), 2000);
+        });
+
+        nextSignerBtn.addEventListener('click', () => {
+            // 保存当前画布（支持两种模式）
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = drawingCanvas.width;
+            tempCanvas.height = drawingCanvas.height;
+            const tempCtx = tempCanvas.getContext('2d');
+            if (inputMode === 'touch') {
+                tempCtx.drawImage(touchCanvas, 0, 0);
+                touchCtx.clearRect(0, 0, touchCanvas.width, touchCanvas.height);
+                touchHint.style.opacity = '1';
+                setTimeout(() => { touchHint.style.opacity = '0.3'; }, 3000);
+            } else {
+                tempCtx.drawImage(drawingCanvas, 0, 0);
+                drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            }
+            signatureLayers.push(tempCanvas);
+
+            drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            smoothedX = null;
+            smoothedY = null;
+            lastKnownX = null;
+            lastKnownY = null;
+            prevFrameX = null;
+            prevFrameY = null;
+            drawState = DRAW_STATE.IDLE;
+            fistFrameCount = 0;
+            openHandFrameCount = 0;
+            lostFrameCount = 0;
+            isDrawing = false;
+            points = [];
+
+            if (currentSigner < totalSigners) {
+                currentSigner++;
+                updateSignatureCount();
+                updateStatus('waiting', `第 ${currentSigner}/${totalSigners} 位 · 张开手掌激活`);
+                mainContainer.style.boxShadow = '0 0 60px rgba(254,202,87,0.6)';
+                setTimeout(() => mainContainer.style.boxShadow = '', 800);
+            } else {
+                updateStatus('ready', '所有人已完成，可以保存了 ✨');
+            }
+        });
+
+        document.getElementById('saveBtn').addEventListener('click', () => {
+            if (isMultiplayer && currentSigner < totalSigners && signatureLayers.length < totalSigners - 1) {
+                alert(`还有 ${totalSigners - currentSigner} 位未签名，请先点击"下一位签名"`);
+                return;
+            }
+
+            // Step 1: 合成
+            const compositeCanvas = document.createElement('canvas');
+            compositeCanvas.width = drawingCanvas.width;
+            compositeCanvas.height = drawingCanvas.height;
+            const compositeCtx = compositeCanvas.getContext('2d');
+
+            // 合成背景 + 签名
+            compositeCtx.drawImage(videoElement, 0, 0, compositeCanvas.width, compositeCanvas.height);
+            signatureLayers.forEach(layer => compositeCtx.drawImage(layer, 0, 0));
+            compositeCtx.drawImage(inputMode === 'touch' ? touchCanvas : drawingCanvas, 0, 0);
+
+            // Step 2: 水平翻转，消除镜像（你看到的画面→保存的图片一致）
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = compositeCanvas.width;
+            finalCanvas.height = compositeCanvas.height;
+            const finalCtx = finalCanvas.getContext('2d');
+            finalCtx.setTransform(-1, 0, 0, 1, finalCanvas.width, 0);
+            finalCtx.drawImage(compositeCanvas, 0, 0);
+            finalCtx.setTransform(1, 0, 0, 1, 0, 0); // 恢复变换
+
+            // Step 3: 在翻转后的图片上加水印（正向可读）
+            finalCtx.font = '14px "PingFang SC", "Microsoft YaHei", sans-serif';
+            finalCtx.fillStyle = 'rgba(255,255,255,0.6)';
+            finalCtx.textAlign = 'right';
+            finalCtx.fillText('Lens Signature', finalCanvas.width - 15, finalCanvas.height - 15);
+
+            pendingComposite = finalCanvas.toDataURL('image/png');
+
+            sceneInput.value = '';
+            aiLoading.classList.remove('active');
+            sceneModal.classList.add('active');
+            sceneInput.focus();
+        });
+
+        document.getElementById('cancelSceneBtn').addEventListener('click', () => {
+            sceneModal.classList.remove('active');
+            pendingComposite = null;
+        });
+
+        document.getElementById('confirmSceneBtn').addEventListener('click', async () => {
+            const scene = sceneInput.value.trim() || '纪念这一刻';
+            aiLoading.classList.add('active');
+
+            const quotes = await generateQuotes(scene);
+
+            aiLoading.classList.remove('active');
+            sceneModal.classList.remove('active');
+            showMemorial(quotes);
+        });
+
+        sceneInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('confirmSceneBtn').click();
+        });
+
+        // ==================== AI 生成多条文案（轮播用） ====================
+        async function generateQuotes(scene) {
+            if (DEEPSEEK_API_KEY === 'sk-你的DeepSeek密钥') {
+                console.warn('未配置 DeepSeek 密钥，使用备用文案');
+                return getRandomFallbacks(5);
+            }
+
+            try {
+                const response = await fetch(DEEPSEEK_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "deepseek-chat",
+                        messages: [
+                            {
+                                role: "system",
+                                content: "你是一位中国现代主义诗人，擅长写唯美、简短、富有意境的纪念文案。风格参考顾城、海子、北岛。请输出5句不同的文案，每句单独一行，每句25字以内。不要加引号，不要编号，不要解释。"
+                            },
+                            {
+                                role: "user",
+                                content: `场景：${scene}。请围绕这个场景，写5句不同风格、不同视角的唯美短句。`
+                            }
+                        ],
+                        temperature: 1.0,
+                        max_tokens: 300
+                    })
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+                const content = data.choices[0].message.content.trim();
+                const lines = content.split('\n')
+                    .map(l => l.replace(/^["'\s\d\.、\-]+|["'\s]+$/g, '').trim())
+                    .filter(l => l.length > 0 && l.length <= 35);
+
+                if (lines.length < 3) return getRandomFallbacks(5);
+
+                return lines.map(q => ({ quote: q, author: 'AI 灵感生成' }));
+            } catch (err) {
+                console.error('DeepSeek 调用失败:', err);
+                return getRandomFallbacks(5);
+            }
+        }
+
+        function getRandomFallbacks(count) {
+            const shuffled = [...FALLBACK_QUOTES].sort(() => Math.random() - 0.5);
+            const result = [];
+            for (let i = 0; i < count; i++) {
+                result.push(shuffled[i % shuffled.length]);
+            }
+            return result;
+        }
+
+        // ==================== 轮播 ====================
+        let carouselQuotes = [];
+        let carouselIndex = 0;
+        let carouselTimer = null;
+
+        function buildCarouselDots() {
+            const container = document.getElementById('carouselDots');
+            container.innerHTML = '';
+            carouselQuotes.forEach((_, i) => {
+                const dot = document.createElement('span');
+                dot.className = 'carousel-dot' + (i === 0 ? ' active' : '');
+                dot.addEventListener('click', () => goToSlide(i));
+                container.appendChild(dot);
+            });
+        }
+
+        function goToSlide(idx) {
+            carouselIndex = idx;
+            const q = carouselQuotes[idx];
+            const textEl = document.getElementById('cloudText');
+            const authorEl = document.getElementById('cloudAuthor');
+
+            // 淡出
+            textEl.classList.add('fading');
+            authorEl.style.opacity = '0';
+
+            setTimeout(() => {
+                textEl.textContent = q.quote;
+                authorEl.textContent = '—— ' + q.author;
+                textEl.classList.remove('fading');
+                authorEl.style.opacity = '1';
+            }, 400);
+
+            // 更新圆点
+            document.querySelectorAll('.carousel-dot').forEach((d, i) => {
+                d.classList.toggle('active', i === idx);
+            });
+
+            // 重置定时器
+            clearInterval(carouselTimer);
+            carouselTimer = setInterval(nextSlide, 3500);
+        }
+
+        function nextSlide() {
+            goToSlide((carouselIndex + 1) % carouselQuotes.length);
+        }
+
+        function stopCarousel() {
+            clearInterval(carouselTimer);
+            carouselTimer = null;
+            carouselQuotes = [];
+            carouselIndex = 0;
+        }
+
+        // ==================== 纪念展示 ====================
+        function showMemorial(quotes) {
+            carouselQuotes = quotes;
+
+            memorialImage.src = pendingComposite;
+            document.getElementById('cloudText').textContent = quotes[0].quote;
+            document.getElementById('cloudAuthor').textContent = '—— ' + quotes[0].author;
+
+            buildCarouselDots();
+
+            // 同步主页颜文字到纪念页
+            for (let i = 1; i <= 6; i++) {
+                const mainEl = document.getElementById('kaomoji' + i);
+                const memEl = document.getElementById('memKao' + i);
+                if (mainEl && memEl && mainEl.textContent) {
+                    memEl.textContent = mainEl.textContent;
+                }
+            }
+
+            mainHeader.style.opacity = '0';
+            mainControls.classList.add('hidden');
+            instructions.classList.add('hidden');
+            statusElement.style.opacity = '0';
+
+            memorialOverlay.classList.add('active');
+
+            carouselIndex = 0;
+            clearInterval(carouselTimer);
+            // 3.5秒自动切换
+            carouselTimer = setInterval(nextSlide, 3500);
+        }
+
+        document.getElementById('backBtn').addEventListener('click', () => {
+            stopCarousel();
+            memorialOverlay.classList.remove('active');
+            mainHeader.style.opacity = '1';
+            mainControls.classList.remove('hidden');
+            instructions.classList.remove('hidden');
+            statusElement.style.opacity = '1';
+            pendingComposite = null;
+
+            if (isMultiplayer) {
+                signatureLayers = [];
+                currentSigner = 1;
+                drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+                touchCtx.clearRect(0, 0, touchCanvas.width, touchCanvas.height);
+                updateSignatureCount();
+                drawState = DRAW_STATE.IDLE;
+                updateStatus('waiting', '张开手掌激活书写模式');
+            }
+        });
+
+        document.getElementById('finalSaveBtn').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = `lens-signature-memorial-${Date.now()}.png`;
+            link.href = pendingComposite;
+            link.click();
+
+            const ct = document.getElementById('cloudText');
+            const ca = document.getElementById('cloudAuthor');
+            const original = ct.textContent;
+            const origAuthor = ca.textContent;
+            ct.textContent = '已保存至相册 (◕‿◕)♡';
+            ca.textContent = '感谢使用镜头签';
+            setTimeout(() => {
+                ct.textContent = original;
+                ca.textContent = origAuthor;
+            }, 2000);
+        });
+    </script>
+
+    </html>

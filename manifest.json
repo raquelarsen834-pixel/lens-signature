@@ -1,0 +1,23 @@
+{
+    "name": "镜头签 - Lens Signature",
+    "short_name": "镜头签",
+    "description": "用手势在空中书写你的专属签名",
+    "start_url": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#fff9f0",
+    "theme_color": "#e8780a",
+    "icons": [
+        {
+            "src": "icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}
