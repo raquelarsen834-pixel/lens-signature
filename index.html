@@ -17,7 +17,9 @@
     <script>
         // 注册 Service Worker (离线缓存 + 可安装)
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js').catch(function() {});
+            navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function(error) {
+            console.warn('Service Worker 注册失败:', error);
+        });
         }
     </script>
     <script>
@@ -937,9 +939,9 @@
         // (音乐播放器已移除 - 单机版)
 
         // ==================== DeepSeek API 配置 ====================
-        // 填入你的真实密钥即可启用 AI 文案生成
-        const DEEPSEEK_API_KEY = 'sk-633b79cef6d349f8a7df919023d386c5';
-        const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+        // 浏览器端不保存 DeepSeek 密钥；默认使用本地备用文案。
+        // 如需 AI 文案，请配置一个不含密钥的后端接口。
+        const QUOTES_API_URL = '';
 
         // ==================== 主题切换 ====================
         function setTheme(theme) {
@@ -1501,8 +1503,11 @@
         }
 
         function checkBrowserSupport() {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                throw new Error('您的浏览器不支持摄像头访问，请使用 Chrome、Firefox 或 Edge 浏览器');
+            if (!window.isSecureContext) {
+                throw new Error('摄像头需要 HTTPS；请使用 GitHub Pages、Cloudflare Pages 或已启用 HTTPS 的自定义域名');
+            }
+            if (!navigator.mediaDevices?.getUserMedia) {
+                throw new Error('当前浏览器不支持摄像头，请使用最新版 Chrome、Safari 或 Edge');
             }
         }
 
@@ -1628,6 +1633,12 @@
                 mobileHint.style.display = 'block';
 
                 startBtn.onclick = async () => {
+                    if (inputMode === 'touch') {
+                        loadingOverlay.classList.add('hidden');
+                        updateStatus('ready', '👆 触屏模式 - 手指在画布上书写');
+                        showInstallHint();
+                        return;
+                    }
                     startBtn.style.display = 'none';
                     mobileHint.style.display = 'none';
                     loadingOverlay.querySelector('.spinner').style.display = '';
@@ -1850,48 +1861,26 @@
 
         // ==================== AI 生成多条文案（轮播用） ====================
         async function generateQuotes(scene) {
-            if (DEEPSEEK_API_KEY === 'sk-你的DeepSeek密钥') {
-                console.warn('未配置 DeepSeek 密钥，使用备用文案');
-                return getRandomFallbacks(5);
-            }
+            if (!QUOTES_API_URL) return getRandomFallbacks(5);
 
             try {
-                const response = await fetch(DEEPSEEK_API_URL, {
+                const response = await fetch(QUOTES_API_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
-                    },
-                    body: JSON.stringify({
-                        model: "deepseek-chat",
-                        messages: [
-                            {
-                                role: "system",
-                                content: "你是一位中国现代主义诗人，擅长写唯美、简短、富有意境的纪念文案。风格参考顾城、海子、北岛。请输出5句不同的文案，每句单独一行，每句25字以内。不要加引号，不要编号，不要解释。"
-                            },
-                            {
-                                role: "user",
-                                content: `场景：${scene}。请围绕这个场景，写5句不同风格、不同视角的唯美短句。`
-                            }
-                        ],
-                        temperature: 1.0,
-                        max_tokens: 300
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scene })
                 });
-
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const data = await response.json();
-                const content = data.choices[0].message.content.trim();
-                const lines = content.split('\n')
-                    .map(l => l.replace(/^["'\s\d\.、\-]+|["'\s]+$/g, '').trim())
-                    .filter(l => l.length > 0 && l.length <= 35);
+                const lines = (data.quotes || [])
+                    .map(line => String(line).trim())
+                    .filter(line => line && line.length <= 35);
 
-                if (lines.length < 3) return getRandomFallbacks(5);
-
-                return lines.map(q => ({ quote: q, author: 'AI 灵感生成' }));
+                return lines.length >= 3
+                    ? lines.map(quote => ({ quote, author: 'AI 灵感生成' }))
+                    : getRandomFallbacks(5);
             } catch (err) {
-                console.error('DeepSeek 调用失败:', err);
+                console.warn('文案服务不可用，使用备用文案:', err);
                 return getRandomFallbacks(5);
             }
         }
