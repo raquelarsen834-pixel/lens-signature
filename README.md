@@ -1,41 +1,41 @@
-# 镜头签 - 手机独立版
+# 镜头签 · 手机独立版
 
-手机扫码/点击链接 → 打开摄像头 → 手势签名。**无需电脑开服务器，只需部署一次。**
+支持两种输入：摄像头手势签名、触屏签名。部署后可直接在手机浏览器使用，也可添加到主屏幕。
 
-## 🚀 部署（5分钟，只需做一次）
+## 部署
 
-### 方式一：GitHub Pages（推荐，免费）
+### GitHub Pages
 
-1. 注册 [GitHub](https://github.com) 账号
-2. 新建仓库：点击右上角 **+** → **New repository**
-   - Repository name: `lens-signature`
-   - 勾选 **Public**
-   - 不要勾选任何初始化选项
-3. 上传文件：把本目录所有文件拖到 GitHub 网页中
-4. 启用 Pages：仓库 → **Settings** → **Pages** →
-   - Source: `main` 分支, root 目录
-   - 点 **Save**
-5. 等 1 分钟，访问 `https://你的用户名.github.io/lens-signature/`
+1. 将仓库设为 Public。
+2. 打开 **Settings → Pages**。
+3. Source 选择 **Deploy from a branch**。
+4. Branch 选择 `main`，目录选择 `/ (root)`，点击 **Save**。
+5. 等待发布完成后，访问：
+   `https://你的用户名.github.io/lens-signature/`
+6. 确认地址栏是 `https://`，不要用 `http://` 或本地文件路径打开。
 
-### 方式二：Cloudflare Pages（国内访问更快）
+### Cloudflare Pages
 
-1. 注册 [Cloudflare](https://dash.cloudflare.com/sign-up)
-2. Workers & Pages → Pages → 上传资产 → 拖入本目录
+选择 **Workers & Pages → Pages → Upload assets**，上传仓库根目录全部文件。发布后同样使用 HTTPS 地址访问。
 
----
+## 手机使用
 
-## 📱 手机使用
+1. 用手机浏览器打开发布地址。
+2. 首次进入先选择输入方式：
+   - **手势**：点击“启动摄像头”，允许摄像头权限；张开手掌激活，移动食指书写，握拳停笔。
+   - **触屏**：无需摄像头和 AI 模型，直接用手指在画布上书写。
+3. 点击“保存签名”，再生成或选择纪念文案。
+4. 下载图片。
 
-1. 手机浏览器打开部署好的链接
-2. 点击「📷 启动摄像头」
-3. 授权摄像头权限
-4. **张开手掌激活** → 移动食指书写 → **握拳停止**
-5. 保存签名
+## PWA 安装
 
-Android 用户可**添加到主屏幕**变成独立 APP（iPhone 用 Safari 分享菜单 → 添加到主屏幕）。
+- Android Chrome：完成一次加载后，使用页面中的“安装为手机 APP”按钮，或浏览器菜单中的“添加到主屏幕”。
+- iPhone/iPad：使用 Safari 的分享菜单 → **添加到主屏幕**。iOS 不显示 Android 的安装事件按钮，这是系统限制。
 
-## ⚠️ 注意
+## 权限与故障排查
 
-- 首次加载需下载 AI 模型（~5MB），建议在 WiFi 下打开
-- CDN 使用 jsDelivr，国内可能较慢但可用
-- 摄像头需要 HTTPS（GitHub Pages 已自带）
+- 摄像头只在 HTTPS 页面可用；GitHub Pages 和 Cloudflare Pages 默认提供 HTTPS。
+- 如果误点“拒绝”，请在浏览器的站点设置中把摄像头改为“允许”，然后刷新页面。
+- 如果摄像头被其他应用占用，关闭视频会议、相机或扫码应用后再试。
+- 国内网络加载手势模式时可能受第三方 CDN 影响；首次加载失败可刷新，或直接切换到触屏模式。需要稳定手势模式时，应把 MediaPipe 依赖和模型文件下载到仓库内自托管，并将代码中的 CDN URL 改为相对路径。
+- AI 文案接口已默认关闭；如需启用，必须部署后端接口，不能把 DeepSeek 密钥写进 `index.html`。
