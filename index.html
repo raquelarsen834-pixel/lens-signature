@@ -1428,7 +1428,7 @@
             const h = canvasElement.height;
 
             // Beat 触发新涟漪：在手指位置或画面中心
-            if (Math.random() < 0.08) // 随机涟漪触发 {
+            if (Math.random() < 0.08) { // 随机涟漪触发
                 const cx = (lastKnownX !== null) ? lastKnownX : w / 2 + (Math.random() - 0.5) * w * 0.3;
                 const cy = (lastKnownY !== null) ? lastKnownY : h / 2 + (Math.random() - 0.5) * h * 0.3;
                 const maxR = 80 + energy * 200;
