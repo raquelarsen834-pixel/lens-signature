@@ -1550,52 +1550,9 @@
         }
 
         // ==================== AI 生成颜文字装饰 ====================
+        // 颜文字使用内置装饰；浏览器端不调用第三方 AI。
         async function generateKaomoji() {
-            if (DEEPSEEK_API_KEY === 'sk-你的DeepSeek密钥') return; // 未配置密钥，保留默认
-
-            try {
-                const response = await fetch(DEEPSEEK_API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
-                    },
-                    body: JSON.stringify({
-                        model: "deepseek-chat",
-                        messages: [
-                            {
-                                role: "system",
-                                content: "你是一个颜文字生成器。输出6个不同的、精美的日式颜文字（kaomoji），每个单独一行。风格要求：可爱、治愈、梦幻，适合作为网页装饰漂浮元素。不要包含任何解释，不要编号，不要加引号，纯颜文字本身即可。每个颜文字不要超过15个字符。"
-                            }
-                        ],
-                        temperature: 1.0,
-                        max_tokens: 200
-                    })
-                });
-
-                if (!response.ok) return;
-
-                const data = await response.json();
-                const content = data.choices[0].message.content.trim();
-                const lines = content.split('\n')
-                    .map(l => l.replace(/^["'\s]+|["'\s]+$/g, '').trim())
-                    .filter(l => l.length > 0 && l.length < 20);
-
-                // 逐个替换到页面上（带淡入动画）
-                for (let i = 0; i < Math.min(6, lines.length); i++) {
-                    const el = document.getElementById('kaomoji' + (i + 1));
-                    if (el && lines[i]) {
-                        el.style.opacity = '0';
-                        el.style.transition = 'opacity 1.5s ease';
-                        setTimeout(() => {
-                            el.textContent = lines[i];
-                            el.style.opacity = '0.55';
-                        }, 300 + i * 500);
-                    }
-                }
-            } catch (err) {
-                console.log('颜文字生成跳过，使用默认:', err.message);
-            }
+            return;
         }
 
         async function init() {
